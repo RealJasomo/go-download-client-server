@@ -8,3 +8,4 @@
 - [ ] paths are sanitized or rejected to protect against folder escalation `../../etc...` or unresolved environment variables `$VAR`
 - [ ] server files are sandboxed and will warn if overwritten. 
 - [ ] server will create directories as needed 
+- [ ] all client files are encrypted with a public/private key encryption, client will store it's own keys

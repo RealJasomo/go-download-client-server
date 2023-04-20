@@ -1,4 +1,4 @@
-module github.com/RealJasomo/go-download-client-server
+module github.com/RealJasomo/go-download-client-server/utils
 
 go 1.19
 
