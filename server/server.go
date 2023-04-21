@@ -57,17 +57,41 @@ func handleClientCommand(conn net.Conn, client_key *rsa.PublicKey, wg *sync.Wait
 				buffer := make([]byte, 4096)
 				conn.Read(buffer)
 				directory := strings.Trim(string(buffer), "\x00")
-				file, err = resolveFile(directory+"/"+file_name, client_key)
+				file_name = directory + "/" + file_name
+				file, err = resolveFile(file_name, client_key)
 				if err != nil {
 					conn.Write([]byte("FILE_NOT_FOUND"))
 					continue
 				}
 			}
+			sigFile, err := resolveFile(file_name+".sig", client_key)
+			if err != nil {
+				conn.Write([]byte("FILE_NOT_FOUND"))
+				continue
+			}
+			conn.Write(sigFile)
 			buffer = make([]byte, 4096)
-			file_size_message := "BYTES " + fmt.Sprint(len(file))
+			conn.Read(buffer)
+			sigData := strings.Trim(string(buffer), "\x00")
+			rsa_private_key := utils.ResolveKey("IWUT_SERVER_PRIVATE_KEY")
+			sig, err := utils.Decrypt([]byte(sigData), rsa_private_key)
+			aes, iv := sig[:32], sig[32:]
+			fmt.Println(aes, iv)
+			decrypted_file := utils.DecryptWithAESKey(file, aes, iv)
+			lenFile, err := resolveFile(file_name+".len", client_key)
+			if err != nil {
+				panic(err)
+			}
+			length, err := strconv.Atoi(string(lenFile))
+			if err != nil {
+				panic(err)
+			}
+			decrypted_file = decrypted_file[:length]
+			buffer = make([]byte, 4096)
+			file_size_message := "BYTES " + fmt.Sprint(length)
 			copy(buffer, []byte(file_size_message))
 			conn.Write(buffer)
-			conn.Write(file)
+			conn.Write(decrypted_file)
 
 		case "uTake":
 			conn.Write([]byte("OK"))
@@ -102,12 +126,33 @@ func handleClientCommand(conn net.Conn, client_key *rsa.PublicKey, wg *sync.Wait
 			if err != nil {
 				os.MkdirAll(path, 0777)
 			}
+			// generate aes key
+			aes_key, iv := utils.GenerateAESKey()
+			// encrypt aes key with client public key
+			full_key := append(aes_key, iv...)
+			encrypted_key, err := utils.Encrypt(full_key, client_key)
+			if err != nil {
+				panic(err)
+			}
+			sigFile, err := os.Create(path + "/" + fileName + ".sig")
+			if err != nil {
+				panic(err)
+			}
+			lenFile, err := os.Create(path + "/" + fileName + ".len")
+			if err != nil {
+				panic(err)
+			}
+			defer sigFile.Close()
+			sigFile.Write(encrypted_key)
+			defer lenFile.Close()
+			lenFile.Write([]byte(fmt.Sprint(len(file))))
 			newFile, err = os.Create(path + "/" + fileName)
 			if err != nil {
 				panic(err)
 			}
 			defer newFile.Close()
-			newFile.Write(file)
+			encrypted_file := utils.EncryptWithAESKey(file, aes_key, iv)
+			newFile.Write(encrypted_file)
 		case "exit":
 			wg.Done()
 			return

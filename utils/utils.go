@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -37,6 +40,7 @@ func ReadPrivateKey(key string) (openssl.PrivateKey, error) {
 			return nil, err
 		}
 		os.Setenv(key, wd+"/keys/private_key.pem")
+		private_key_filepath = os.Getenv(key)
 	}
 	_, err := os.Stat(private_key_filepath)
 	if os.IsNotExist(err) {
@@ -86,4 +90,41 @@ func HashKey(key *rsa.PublicKey) string {
 	bytes := x509.MarshalPKCS1PublicKey(key)
 	hash := sha256.Sum256(bytes)
 	return hex.EncodeToString(hash[:])
+}
+
+func GenerateAESKey() ([]byte, []byte) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	iv := make([]byte, 16)
+	rand.Read(iv)
+	return key, iv
+}
+
+func EncryptWithAESKey(plaintext []byte, key []byte, iv []byte) []byte {
+	block, err := aes.NewCipher(key)
+	bPlaintext := PKCS5Padding([]byte(plaintext), block.BlockSize(), len(plaintext))
+	if err != nil {
+		panic(err)
+	}
+	ciphertext := make([]byte, len(bPlaintext))
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(ciphertext, bPlaintext)
+	return ciphertext
+}
+
+func DecryptWithAESKey(ciphertext []byte, key []byte, iv []byte) []byte {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		panic(err)
+	}
+	plaintext := make([]byte, len(ciphertext))
+	mode := cipher.NewCBCDecrypter(block, iv)
+	mode.CryptBlocks(plaintext, ciphertext)
+	return plaintext
+}
+
+func PKCS5Padding(ciphertext []byte, blockSize int, after int) []byte {
+	padding := (blockSize - len(ciphertext)%blockSize)
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
+	return append(ciphertext, padtext...)
 }

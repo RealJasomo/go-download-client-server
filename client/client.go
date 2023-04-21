@@ -85,6 +85,13 @@ func handleSendServerCommands(conn net.Conn, server_public_key *rsa.PublicKey) {
 					}
 				}
 				file, err := os.Create(wd + "/" + directory + "/" + fileName)
+				sig_data := strings.Trim(string(buffer), "\x00")
+				rsa_private_key := utils.ResolveKey("IWUT_CLIENT_PRIVATE_KEY")
+				decrypted_sig_data, err := utils.Decrypt([]byte(sig_data), rsa_private_key)
+				encypt_sig_data, err := utils.Encrypt(decrypted_sig_data, server_public_key)
+				conn.Write(encypt_sig_data)
+				buffer = make([]byte, 4096)
+				conn.Read(buffer)
 				buffer_size_string := strings.Trim(string(buffer), "\x00")
 				buffer_size, err := strconv.Atoi(strings.Split(buffer_size_string, " ")[1])
 				if err != nil {
@@ -95,11 +102,6 @@ func handleSendServerCommands(conn net.Conn, server_public_key *rsa.PublicKey) {
 				conn.Read(buffer)
 				if directory == "." {
 					directory = "current directory"
-				}
-				rsa_private_key := utils.ResolveKey("IWUT_CLIENT_PRIVATE_KEY")
-				buffer, err = utils.Decrypt(buffer, rsa_private_key)
-				if err != nil {
-					panic(err)
 				}
 				fmt.Printf("file transfer of %d bytes to server complete and placed in %s\n", buffer_size, directory)
 				file.Write(buffer)
@@ -127,12 +129,13 @@ func handleSendServerCommands(conn net.Conn, server_public_key *rsa.PublicKey) {
 				fileSize := fileInfo.Size()
 				fileBuffer := make([]byte, fileSize)
 				file.Read(fileBuffer)
-				rsa_private_key := utils.ResolveKey("IWUT_CLIENT_PRIVATE_KEY")
-				encryptedFileBuffer, err := utils.Encrypt(fileBuffer, &rsa_private_key.PublicKey)
-				if err != nil {
-					panic(err)
-				}
-				file_size_message := "BYTES " + fmt.Sprintf("%d", len(encryptedFileBuffer))
+				fmt.Println("File size is: ", fileSize)
+				// rsa_private_key := utils.ResolveKey("IWUT_CLIENT_PRIVATE_KEY")
+				// encryptedFileBuffer, err := utils.Encrypt(fileBuffer, &rsa_private_key.PublicKey)
+				// if err != nil {
+				// 	panic(err)
+				// }
+				file_size_message := "BYTES " + fmt.Sprintf("%d", len(fileBuffer))
 				fmt.Println(file_size_message)
 				fmt.Println(" What directory on the server would you like to save this file?")
 				fmt.Print("> ")
@@ -148,11 +151,11 @@ func handleSendServerCommands(conn net.Conn, server_public_key *rsa.PublicKey) {
 				copy(buffer, []byte(file_size_message))
 				conn.Write(buffer)
 				fmt.Println("file transfer started...")
-				conn.Write(encryptedFileBuffer)
+				conn.Write(fileBuffer)
 				buffer = make([]byte, 4096)
 				conn.Read(buffer)
 				if strings.Trim(string(buffer), "\x00") == "OK" {
-					fmt.Printf("file transfer of %d bytes to server complete and placed in %s\n", len(encryptedFileBuffer), directory)
+					fmt.Printf("file transfer of %d bytes to server complete and placed in %s\n", len(fileBuffer), directory)
 				}
 			}
 		case "exit":
