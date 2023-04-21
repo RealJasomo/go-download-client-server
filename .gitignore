@@ -2,3 +2,4 @@
 
 server/store
 client/files
+*.DS_STORE
